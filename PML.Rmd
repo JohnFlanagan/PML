@@ -1,0 +1,113 @@
+---
+title: "PracticalMachineLearning"
+author: "JFlanagan"
+date: "Saturday, October 25, 2014"
+output: html_document
+---
+
+##Practical Machine Learning from www.coursera.org
+###Course Project
+
+The objective of this project is to develop a predictive model to predict the quality of barbell lifts using  data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants, who were requested to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+The steps undertaken in this project were:
+
+1. Import training data
+2. Tidy data (removal of NAs and non-predictive information)
+3. Split data 70/30 for the purposes of model building and cross-validation
+4. Apply different predictive models and assess accuracy based on "Out of Sample Error"
+5. Import test data and tidy in the same manner as the training data
+6. Apply predictive model which gave best results in step 4.
+
+###Step 1. Import training data
+```{r, cache=TRUE}
+trainingraw <- read.csv("C:/Users/mikoflan/Documents/PredMachLearning/pml-training.csv", 
+                          na.strings= c("NA",""," "))
+```
+###Step 2. Tidy data (removal of NAs and non-predictive information)
+First, I computed the number of missing values per column of data. Then I investigated the occurence of NAs; the results showed that columns either contained >15,000 NAs or no NAs. In a dataset with 19,622 observations, I decided that if there were in excess of 15,000 NAs, these columns added little predictive power to the model chosen.
+
+```{r, cache=TRUE}
+dim(trainingraw)
+trainingrawNA <- apply(trainingraw, 2, function(x) sum(is.na(x)))
+
+sum(trainingrawNA > 10)
+sum(trainingrawNA > 15000)
+sum(trainingrawNA > 0) ## therefore can remove all cols with any NA (if one NA, then > 10000 NAs)
+
+training <- trainingraw[,which(trainingrawNA < 1)]
+
+ncoltraining <- ncol(training)
+training <- training[,8:ncoltraining] ##remove non-predictive information in 1st 8 columns
+table(training$classe) ## get overview of outcome
+```
+###Step 3. Split data 70/30 for the purposes of model building and cross-validation
+```{r, cache=TRUE}
+library(caret)
+inTrain <- createDataPartition(y = training$classe, p = 0.7, list = FALSE)
+train <- training[inTrain, ]
+crossval <- training[-inTrain, ]
+
+library(corrplot)
+train2 <- train[,-53]
+M <- cor(train2)
+corrplot(M, type="lower", order="hclust") ## visualize potential correlations
+```
+
+###Step 4. Apply different predictive models and assess accuracy based on "Out of Sample Error"
+
+I would like to Out of Sample Error rate of less than 5 %.
+
+4a. Linear Discriminant Analysis
+```{r, cache=TRUE}
+modlda <- train(classe ~ ., data=train, method = "lda")
+plda <- predict(modlda, crossval)
+confusionMatrix(crossval$classe, plda) ## 70.28% accuracy
+OOSE.acc.lda <- sum(plda == crossval$classe)/length(plda)
+OOSE.lda <- round(((1-OOSE.acc.lda)*100), digits=2)
+```
+The Out of Sample Error using Linear Discriminant Analysis was estimated to be `r OOSE.lda`%.
+
+4b. Classification tree
+```{r, cache=TRUE}
+library(rpart)
+modrpart <- train(classe ~., method="rpart", data=train)
+predrpart <- predict(modrpart, crossval)
+confusionMatrix(crossval$classe, predrpart) ##49% accuracy
+OOSE.acc.rpart <- sum(predrpart == crossval$classe)/length(predrpart)
+OOSE.rpart <- round(((1-OOSE.acc.rpart)*100), digits=2)
+```
+The Out of Sample Error using the Classification tree method was estimated to be `r OOSE.rpart`%.
+
+4c. Random Forest
+```{r, cache=TRUE}
+library(randomForest)
+model <- randomForest(classe ~ ., data = train)
+predCrossVal <- predict(model, crossval)
+confusionMatrix(crossval$classe, predCrossVal) ## 99.4% accuracy
+OOSE.acc.rf <- sum(predCrossVal == crossval$classe)/length(predCrossVal)
+OOSE.rf <- round(((1-OOSE.acc.rf)*100), digits=2)
+```
+The Out of Sample Error using the Random Forest method was estimated to be `r OOSE.rf`%.
+
+As this was by far the most accurate of the 3 methods tested, and below the desired level of 5 %, I decided to use this model for the test data.
+
+###Step 5. Import test data and tidy in the same manner as the training data
+```{r, cache=TRUE}
+testingraw <- read.csv("C:/Users/mikoflan/Documents/PredMachLearning/pml-testing.csv", 
+                       na.strings= c("NA",""," "))
+testingrawNA <- apply(testingraw, 2, function(x) sum(is.na(x)))
+
+sum(testingrawNA > 10)
+sum(testingrawNA > 15000)
+sum(testingrawNA > 0) ## therefore can remove all cols with any NA (if one NA, then > 15000 NAs)
+
+testing <- testingraw[,which(testingrawNA < 1)]
+
+ncoltesting <- ncol(testing)
+testing <- testing[,8:ncoltesting] ##remove non-predictive information in 1st 8 columns
+```
+###Step 6. Apply predictive model which gave best results in step 4.
+```{r, cache=TRUE}
+predicttesting <- predict(model, testing)
+```
